@@ -1,57 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useAccount, useWaitForTransactionReceipt, useWriteContract, useSendTransaction } from 'wagmi'
-import { parseEther, parseUnits } from 'viem'
+import { useWallet } from '@aptos-labs/wallet-adapter-react'
+import { Aptos, AptosConfig, Network, AccountAddress } from '@aptos-labs/ts-sdk'
 import type Phaser from 'phaser'
 import { SCENE_KEYS } from '../game/scenes/scene-keys'
 
-const ERC20_ABI = [
-  {
-    constant: false,
-    inputs: [
-      { name: 'to', type: 'address' },
-      { name: 'value', type: 'uint256' },
-    ],
-    name: 'transfer',
-    outputs: [{ name: '', type: 'bool' }],
-    type: 'function',
-    stateMutability: 'nonpayable',
-  },
-] as const
-
-function getEnv(name: string) {
-  return (import.meta as any).env?.[name]
-}
-
-function getMasterAddress(): string | undefined {
-  // Vite exposes only VITE_ vars; also read non-prefixed as a fallback if injected elsewhere
-  return getEnv('VITE_MASTER_WALLET_ADDRESS') || getEnv('MASTER_WALLET_ADDRESS')
-}
-
-function getTokenAddress(): string | undefined {
-  return getEnv('VITE_STT_TOKEN_ADDRESS') || getEnv('STT_TOKEN_ADDRESS')
-}
-
-function getTokenDecimals(): number {
-  const v = getEnv('VITE_STT_DECIMALS') || getEnv('STT_DECIMALS')
-  const n = v ? Number(v) : 18
-  return Number.isFinite(n) && n > 0 ? n : 18
-}
+// Initialize Aptos client
+const aptosConfig = new AptosConfig({ network: Network.TESTNET })
+const aptos = new Aptos(aptosConfig)
 
 export default function PaymentGate() {
-  const { address, isConnected } = useAccount()
+  const { connected, account, signAndSubmitTransaction } = useWallet()
   const [show, setShow] = useState(false)
-  const [txHash, setTxHash] = useState<`0x${string}` | undefined>()
+  const [txHash, setTxHash] = useState<string | undefined>()
   const [error, setError] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
 
   const master = import.meta.env?.VITE_MASTER_WALLET_ADDRESS as string | undefined
-  const token = getTokenAddress()
-  const decimals = getTokenDecimals()
-
-
-  // Wagmi actions
-  const sendNative = useSendTransaction()
-  const writeErc20 = useWriteContract()
-  const receipt = useWaitForTransactionReceipt({ hash: txHash })
 
   const pauseGame = useMemo(() => {
     return () => {
@@ -71,8 +35,8 @@ export default function PaymentGate() {
 
   useEffect(() => {
     // Verbose logs to help diagnose why the gate may not be visible
-    console.debug('[PaymentGate] isConnected=', isConnected, 'master=', master, 'token=', token)
-    if (isConnected) {
+    console.debug('[PaymentGate] connected=', connected, 'master=', master)
+    if (connected) {
       // Show even if master is missing, but surface an inline config error
       setShow(true)
       pauseGame()
@@ -81,44 +45,61 @@ export default function PaymentGate() {
       resumeGame()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, master])
+  }, [connected, master])
 
   useEffect(() => {
-    if (receipt.data?.status === 'success') {
-      setShow(false)
-      setError(null)
-      resumeGame()
+    // Check transaction status periodically
+    if (txHash) {
+      const interval = setInterval(async () => {
+        try {
+          const tx = await aptos.getTransactionByHash({ transactionHash: txHash })
+          if (tx.type === 'user_transaction' && tx.success) {
+            setShow(false)
+            setError(null)
+            resumeGame()
+            clearInterval(interval)
+          }
+        } catch (e) {
+          console.error('Error checking transaction status:', e)
+        }
+      }, 2000)
+
+      return () => clearInterval(interval)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [receipt.data?.status])
+  }, [txHash])
 
   const pay = async () => {
     if (!master) {
       setError('Master wallet address is not configured')
       return
     }
+    
+    if (!account) {
+      setError('No account connected')
+      return
+    }
+
     setError(null)
+    setIsProcessing(true)
+    
     try {
-      // Amount: 0.1 STT
-      if (token) {
-        const value = parseUnits('0.1', decimals)
-        const hash = await writeErc20.writeContractAsync({
-          abi: ERC20_ABI,
-          address: token as `0x${string}`,
-          functionName: 'transfer',
-          args: [master as `0x${string}` , value],
-        })
-        setTxHash(hash)
-      } else {
-        const value = parseEther('0.1')
-        const hash = await sendNative.sendTransactionAsync({
-          to: master as `0x${string}`,
-          value,
-        })
-        setTxHash(hash)
-      }
+      // Amount: 0.1 APT (in octas - smallest unit)
+      const amount = 10000000 // 0.1 APT in octas (1 APT = 100,000,000 octas)
+      
+      const response = await signAndSubmitTransaction({
+        sender: account.address.toString(),
+        data: {
+          function: '0x1::aptos_account::transfer',
+          typeArguments: [],
+          functionArguments: [master, amount],
+        },
+      })
+      setTxHash(response.hash)
     } catch (e: any) {
-      setError(e?.shortMessage || e?.message || 'Payment failed')
+      console.error('Payment failed:', e)
+      setError(e?.message || 'Payment failed')
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -185,7 +166,7 @@ export default function PaymentGate() {
           </div>
 
           <div style={{ fontFamily: 'Press Start 2P, monospace', fontSize: 11, opacity: 0.9, lineHeight: 1.7, marginBottom: 16 }}>
-            Send <strong>0.1 STT</strong> to unlock the game.
+            Send <strong>0.1 APT</strong> to unlock the game.
           </div>
 
           <div style={{ fontFamily: 'monospace', fontSize: 11, opacity: 0.8, marginBottom: 18 }}>
@@ -195,7 +176,7 @@ export default function PaymentGate() {
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <button
               onClick={pay}
-              disabled={sendNative.isPending || writeErc20.isPending}
+              disabled={isProcessing}
               style={{
                 padding: '12px 16px',
                 borderRadius: 10,
@@ -204,10 +185,11 @@ export default function PaymentGate() {
                 color: '#e5e7eb',
                 fontFamily: 'Press Start 2P, monospace',
                 fontSize: 11,
-                cursor: 'pointer',
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                opacity: isProcessing ? 0.7 : 1,
               }}
             >
-              {sendNative.isPending || writeErc20.isPending ? 'Confirm in wallet...' : 'Pay 0.1 STT'}
+              {isProcessing ? 'Confirm in wallet...' : 'Pay 0.1 APT'}
             </button>
 
             {txHash && (

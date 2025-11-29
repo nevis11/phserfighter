@@ -28,6 +28,8 @@
         "start": "node log.js start & vite preview --config vite/config.prod.mjs"
     },
     "dependencies": {
+        "@aptos-labs/ts-sdk": "^5.1.5",
+        "@aptos-labs/wallet-adapter-react": "^7.2.2",
         "@reown/appkit": "^1.8.13",
         "@reown/appkit-adapter-wagmi": "^1.8.13",
         "@tailwindcss/vite": "^4.1.16",

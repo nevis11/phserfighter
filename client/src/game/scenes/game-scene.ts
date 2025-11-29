@@ -69,6 +69,37 @@ export class GameScene extends Phaser.Scene {
   #switchGroup!: Phaser.GameObjects.Group;
   #rewardItem!: Phaser.GameObjects.Image;
 
+  /**
+   * Mint an NFT loot item when a chest is opened
+   */
+  #mintLootFromChest(chestContents: keyof typeof DUNGEON_ITEM): void {
+    // Only mint if the window function is available (wallet connected)
+    if (typeof (window as any).mintLootFromGame === 'function') {
+      // Map chest contents to loot type
+      let lootType = 'sword'; // default
+      
+      switch (chestContents) {
+        case DUNGEON_ITEM.MAP:
+        case DUNGEON_ITEM.COMPASS:
+          lootType = 'sword';
+          break;
+        case DUNGEON_ITEM.SMALL_KEY:
+        case DUNGEON_ITEM.BOSS_KEY:
+          lootType = 'key';
+          break;
+        default:
+          lootType = 'sword';
+      }
+      
+      // Call the minting function (this will be handled by the web3 integration)
+      try {
+        (window as any).mintLootFromGame(lootType);
+      } catch (error) {
+        console.error('Error minting loot NFT:', error);
+      }
+    }
+  }
+
   constructor() {
     super({
       key: SCENE_KEYS.GAME_SCENE,
@@ -290,6 +321,9 @@ export class GameScene extends Phaser.Scene {
 
     if (chest.contents !== CHEST_REWARD.NOTHING) {
       InventoryManager.instance.addDungeonItem(this.#levelData.level, chest.contents);
+      
+      // Mint NFT when chest is opened (only once per chest)
+      this.#mintLootFromChest(chest.contents);
     }
 
     this.#rewardItem

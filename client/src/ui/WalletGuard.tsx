@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type Phaser from 'phaser'
-import { useAccount } from 'wagmi'
+import { useWallet } from '@aptos-labs/wallet-adapter-react'
+import ConnectWalletButton from './ConnectWalletButton'
 
 export default function WalletGuard() {
-  const { isConnected, isConnecting } = useAccount()
+  const { connected } = useWallet()
   const [show, setShow] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -15,8 +16,8 @@ export default function WalletGuard() {
 
   useEffect(() => {
     // show guard when not connected
-    setShow(!isConnected)
-  }, [isConnected])
+    setShow(!connected)
+  }, [connected])
 
   if (!show) return null
 
@@ -84,21 +85,12 @@ export default function WalletGuard() {
           </div>
 
           <div style={{ fontFamily: 'Press Start 2P, monospace', fontSize: 11, opacity: 0.85, marginBottom: 18, lineHeight: 1.6 }}>
-            You need to connect to Somnia Testnet to start playing.
+            You need to connect to Aptos Testnet to start playing.
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'center' }}>
-            {/* Show a skeleton while web component loads */}
-            <div style={{ minWidth: 180, minHeight: 44, display: 'grid', placeItems: 'center' }}>
-              <appkit-button></appkit-button>
-            </div>
+            <ConnectWalletButton />
           </div>
-
-          {isConnecting && (
-            <div style={{ textAlign: 'center', marginTop: 12, fontFamily: 'Press Start 2P, monospace', fontSize: 10, opacity: 0.75 }}>
-              Waiting for wallet...
-            </div>
-          )}
         </div>
       </div>
     </div>

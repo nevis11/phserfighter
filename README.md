@@ -2,7 +2,9 @@
 
 ![spearHead Poster](client/public/poster.png)
 
-spearHead is an experimental, fast-paced web game built for the Somnia AI Hackathon. It’s powered by Phaser 3, React, and Vite, with optional on‑chain building blocks in Solidity. The goal is to create a delightful, modern game experience that can grow into social, competitive modes and rich player identity — all while staying simple to run and iterate on.
+spearHead is an experimental, fast-paced web game built for the Somnia AI Hackathon. It's powered by Phaser 3, React, and Vite, with optional on-chain building blocks in Move (Aptos) and Solidity (EVM). The goal is to create a delightful, modern game experience that can grow into social, competitive modes and rich player identity — all while staying simple to run and iterate on.
+
+This version has been migrated from Somnia (EVM) to Aptos blockchain, with NFT integration for in-game loot.
 
 ## Why this project
 - **Rapid iteration:** Vite + React + Phaser hot-reload for quick gameplay experiments.
@@ -21,13 +23,16 @@ spearHead is an experimental, fast-paced web game built for the Somnia AI Hackat
 
 ## Tech stack
 - **Client:** Phaser 3, React 19, Vite 6, TypeScript 5
-- **Contracts:** Solidity ^0.8.20
+- **Contracts:** Solidity ^0.8.20 (EVM) and Move (Aptos)
 
 ## Repository structure
 - **client/** — React + Phaser app (development server, build, assets)
-- **contracts/** — Example Solidity contracts
+- **contracts/** — Example Solidity contracts (EVM)
   - `NamingRegistry.sol` — Simple username registry per address
   - `Escrow.sol` — Minimal ETH escrow flow with release/refund
+- **client/aptos-nft/** — Move NFT contracts (Aptos)
+  - `Move.toml` — Package configuration
+  - `sources/dungeon_nft.move` — NFT module with collection and item structs
 
 ## Quick start
 1. Install Node.js (LTS recommended).
@@ -39,6 +44,20 @@ spearHead is an experimental, fast-paced web game built for the Somnia AI Hackat
    - Open the URL shown in the terminal (defaults to http://localhost:8080)
 4. Build for production:
    - `npm run build` (outputs to `client/dist`)
+
+## Web3 Integration
+
+### Wallet Setup
+- Install the Petra Wallet extension for Chrome/Firefox
+- Switch to the Aptos Testnet network
+- Get testnet APT from the faucet: https://faucet.devnet.aptoslabs.com/
+
+### Environment Variables
+Create a `.env` file in the `client/` directory with:
+```
+VITE_MODULE_ADDRESS=your_deployed_module_address
+VITE_MASTER_WALLET_ADDRESS=your_wallet_address
+```
 
 For full client usage details, see `client/README.md`.
 
@@ -54,11 +73,24 @@ For full client usage details, see `client/README.md`.
 | Enter | Select menu option. |
 
 ## Smart contracts (optional)
+
+### EVM Contracts
 The `contracts/` folder includes small, standalone examples:
 - **NamingRegistry** — Set and read a name for a wallet address.
 - **Escrow** — Lock ETH, then release to payee or refund to payer. Includes basic reentrancy protection.
 
 These are provided as references for future gameplay and economy ideas. You can deploy them to a testnet or local chain and wire them into the client when needed.
+
+### Aptos NFT Contracts
+The `client/aptos-nft/` folder includes Move contracts for NFT integration:
+- **dungeon_nft** — NFT module with collection and item structs for in-game loot
+
+To deploy the Aptos contracts:
+1. Install the Aptos CLI
+2. Navigate to `client/aptos-nft`
+3. Run `aptos move compile --named-addresses dungeon_nft=default`
+4. Run `aptos move publish --named-addresses dungeon_nft=default`
+5. Note the deployed module address and set it in your `.env` file as `VITE_MODULE_ADDRESS`
 
 ## Vision and roadmap
 spearHead is designed to evolve. Upcoming ideas we’re excited about:

@@ -1,12 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
-import { AppKitProvider } from './wallet/config/index.tsx';
+import { WalletProvider } from './web3/WalletProvider.tsx';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-        <AppKitProvider>
+        <WalletProvider>
             <App />
-        </AppKitProvider>
+        </WalletProvider>
     </React.StrictMode>,
 )
