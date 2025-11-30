@@ -116,177 +116,228 @@ export class GameScene extends Phaser.Scene {
   }
 
   public create(): void {
+    console.log('[GameScene] create method called');
+    console.log('[GameScene] Scene dimensions:', this.scale.width, 'x', this.scale.height);
+    console.log('[GameScene] Game canvas:', this.game.canvas);
+    
     if (!this.input.keyboard) {
-      console.warn('Phaser keyboard plugin is not setup properly.');
+      console.warn('[GameScene] Phaser keyboard plugin is not setup properly.');
       return;
     }
     this.#controls = new KeyboardComponent(this.input.keyboard);
 
-    this.#createLevel();
-    if (this.#collisionLayer === undefined || this.#enemyCollisionLayer === undefined) {
-      console.warn('Missing required collision layers for game.');
-      return;
+    console.log('[GameScene] Creating level...');
+    try {
+      this.#createLevel();
+      if (this.#collisionLayer === undefined || this.#enemyCollisionLayer === undefined) {
+        console.warn('[GameScene] Missing required collision layers for game.');
+        // Continue anyway to show the background
+      }
+    } catch (error) {
+      console.error('[GameScene] Error creating level:', error);
+      // Continue anyway to show the background
     }
 
-    this.#showObjectsInRoomById(this.#levelData.roomId);
+    console.log('[GameScene] Showing objects in room...');
+    try {
+      console.log('[GameScene] objectsByRoomId state:', this.#objectsByRoomId);
+      // Only show objects if they were created successfully
+      // Add proper null check before accessing this.#objectsByRoomId
+      if (this.#objectsByRoomId && typeof this.#objectsByRoomId === 'object' && Object.keys(this.#objectsByRoomId).length > 0) {
+        this.#showObjectsInRoomById(this.#levelData.roomId);
+      } else {
+        console.log('[GameScene] Skipping object display - no objects created');
+      }
+    } catch (error) {
+      console.error('[GameScene] Error showing objects in room:', error);
+    }
+    
+    console.log('[GameScene] Setting up player...');
     this.#setupPlayer();
+    
+    console.log('[GameScene] Setting up camera...');
     this.#setupCamera();
+    
     this.#rewardItem = this.add.image(0, 0, ASSET_KEYS.UI_ICONS, 0).setVisible(false).setOrigin(0, 1);
 
+    console.log('[GameScene] Registering colliders...');
     this.#registerColliders();
+    
+    console.log('[GameScene] Registering custom events...');
     this.#registerCustomEvents();
 
+    console.log('[GameScene] Launching UI scene...');
     this.scene.launch(SCENE_KEYS.UI_SCENE);
 
+    console.log('[GameScene] Setting up resize listener...');
     this.scale.on(Phaser.Scale.Events.RESIZE, this.#onResize, this);
+    
+    console.log('[GameScene] Scene creation complete');
+    console.log('[GameScene] Scene children count:', this.children.length);
   }
 
   #registerColliders(): void {
-    // collision between player and map walls
-    this.#collisionLayer.setCollision([this.#collisionLayer.tileset[0].firstgid]);
-    this.#enemyCollisionLayer.setCollision([this.#collisionLayer.tileset[0].firstgid]);
-    this.physics.add.collider(this.#player, this.#collisionLayer);
-
-    // collision between player and game objects in the dungeon/room/world
-    this.physics.add.overlap(this.#player, this.#doorTransitionGroup, (playerObj, doorObj) => {
-      this.#handleRoomTransition(doorObj as Phaser.Types.Physics.Arcade.GameObjectWithBody);
-    });
-
-    // register collisions between player and blocking game objects (doors, pots, chests, etc.)
-    this.physics.add.collider(this.#player, this.#blockingGroup, (player, gameObject) => {
-      // add game object to players collision list
-      this.#player.collidedWithGameObject(gameObject as GameObject);
-    });
-
-    // collision between player and switches that can be stepped on
-    this.physics.add.overlap(this.#player, this.#switchGroup, (playerObj, switchObj) => {
-      this.#handleButtonPress(switchObj as Button);
-    });
-
-    // collision between player and doors that can be unlocked
-    this.physics.add.collider(this.#player, this.#lockedDoorGroup, (player, gameObject) => {
-      const doorObject = gameObject as Phaser.Types.Physics.Arcade.GameObjectWithBody;
-      const door = this.#objectsByRoomId[this.#currentRoomId].doorMap[doorObject.name as any] as Door;
-
-      if (door.doorType !== DOOR_TYPE.LOCK && door.doorType !== DOOR_TYPE.BOSS) {
-        return;
+    try {
+      // Only register colliders if collision layers exist
+      if (this.#collisionLayer && this.#enemyCollisionLayer) {
+        // collision between player and map walls
+        this.#collisionLayer.setCollision([this.#collisionLayer.tileset[0].firstgid]);
+        this.#enemyCollisionLayer.setCollision([this.#collisionLayer.tileset[0].firstgid]);
+        this.physics.add.collider(this.#player, this.#collisionLayer);
       }
 
-      const areaInventory = InventoryManager.instance.getAreaInventory(this.#levelData.level);
-      if (door.doorType === DOOR_TYPE.LOCK) {
-        if (areaInventory.keys > 0) {
-          InventoryManager.instance.useAreaSmallKey(this.#levelData.level);
-          door.open();
-          // update data manager so we can persist door state
-          DataManager.instance.updateDoorData(this.#currentRoomId, door.id, true);
-        }
-        return;
-      }
+      // collision between player and game objects in the dungeon/room/world
+      this.physics.add.overlap(this.#player, this.#doorTransitionGroup, (playerObj, doorObj) => {
+        this.#handleRoomTransition(doorObj as Phaser.Types.Physics.Arcade.GameObjectWithBody);
+      });
 
-      // handle boss door
-      if (!areaInventory.bossKey) {
-        return;
-      }
-      // update data manager so we can persist door state
-      DataManager.instance.updateDoorData(this.#currentRoomId, door.id, true);
-      door.open();
-    });
+      // register collisions between player and blocking game objects (doors, pots, chests, etc.)
+      this.physics.add.collider(this.#player, this.#blockingGroup, (player, gameObject) => {
+        // add game object to players collision list
+        this.#player.collidedWithGameObject(gameObject as GameObject);
+      });
 
-    // collisions between enemy groups, collision layers, player, player weapon, and blocking items (pots, chests, etc)
-    Object.keys(this.#objectsByRoomId).forEach((key) => {
-      const roomId = parseInt(key, 10);
-      if (this.#objectsByRoomId[roomId] === undefined) {
-        return;
-      }
+      // collision between player and switches that can be stepped on
+      this.physics.add.overlap(this.#player, this.#switchGroup, (playerObj, switchObj) => {
+        this.#handleButtonPress(switchObj as Button);
+      });
 
-      if (this.#objectsByRoomId[roomId].enemyGroup !== undefined) {
-        // collide with walls, doors, etc
-        this.physics.add.collider(this.#objectsByRoomId[roomId].enemyGroup, this.#enemyCollisionLayer);
+      // collision between player and doors that can be unlocked
+      this.physics.add.collider(this.#player, this.#lockedDoorGroup, (player, gameObject) => {
+        const doorObject = gameObject as Phaser.Types.Physics.Arcade.GameObjectWithBody;
+        // Check if objectsByRoomId exists before accessing
+        if (this.#objectsByRoomId && this.#objectsByRoomId[this.#currentRoomId]) {
+          const door = this.#objectsByRoomId[this.#currentRoomId].doorMap[doorObject.name as any] as Door;
 
-        // register collisions between player and enemies
-        this.physics.add.overlap(this.#player, this.#objectsByRoomId[roomId].enemyGroup, () => {
-          this.#player.hit(DIRECTION.DOWN, 1);
-        });
-
-        // register collisions between enemies and blocking game objects (doors, pots, chests, etc.)
-        this.physics.add.collider(
-          this.#objectsByRoomId[roomId].enemyGroup,
-          this.#blockingGroup,
-          (enemy, gameObject) => {
-            // handle when pot objects are thrown at enemies
-            if (
-              gameObject instanceof Pot &&
-              isArcadePhysicsBody(gameObject.body) &&
-              (gameObject.body.velocity.x !== 0 || gameObject.body.velocity.y !== 0)
-            ) {
-              const enemyGameObject = enemy as CharacterGameObject;
-              if (enemyGameObject instanceof CharacterGameObject) {
-                enemyGameObject.hit(this.#player.direction, 1);
-                gameObject.break();
+          if (door && (door.doorType === DOOR_TYPE.LOCK || door.doorType === DOOR_TYPE.BOSS)) {
+            const areaInventory = InventoryManager.instance.getAreaInventory(this.#levelData.level);
+            if (door.doorType === DOOR_TYPE.LOCK) {
+              if (areaInventory.keys > 0) {
+                InventoryManager.instance.useAreaSmallKey(this.#levelData.level);
+                door.open();
+                // update data manager so we can persist door state
+                DataManager.instance.updateDoorData(this.#currentRoomId, door.id, true);
               }
-            }
-          },
-          // handle when objects are thrown on wisps, ignore collisions and let object move through
-          (enemy, gameObject) => {
-            const body = (gameObject as unknown as GameObject).body;
-            if (
-              enemy instanceof Wisp &&
-              isArcadePhysicsBody(body) &&
-              (body.velocity.x !== 0 || body.velocity.y !== 0)
-            ) {
-              return false;
-            }
-            return true;
-          },
-        );
-
-        // register collisions between player weapon and enemies
-        this.physics.add.overlap(
-          this.#objectsByRoomId[roomId].enemyGroup,
-          this.#player.weaponComponent.body,
-          (enemy) => {
-            (enemy as CharacterGameObject).hit(this.#player.direction, this.#player.weaponComponent.weaponDamage);
-          },
-        );
-
-        // register collisions between enemy weapon and player
-        const enemyWeapons = this.#objectsByRoomId[roomId].enemyGroup.getChildren().flatMap((enemy) => {
-          const weaponComponent = WeaponComponent.getComponent<WeaponComponent>(enemy as GameObject);
-          if (weaponComponent !== undefined) {
-            return [weaponComponent.body];
-          }
-          return [];
-        });
-        if (enemyWeapons.length > 0) {
-          this.physics.add.overlap(enemyWeapons, this.#player, (enemyWeaponBody) => {
-            // get associated weapon component so we can do things like hide projectiles and disable collisions
-            const weaponComponent = WeaponComponent.getComponent<WeaponComponent>(enemyWeaponBody as GameObject);
-            if (weaponComponent === undefined || weaponComponent.weapon === undefined) {
               return;
             }
-            weaponComponent.weapon.onCollisionCallback();
-            this.#player.hit(DIRECTION.DOWN, weaponComponent.weaponDamage);
-          });
-        }
-      }
 
-      // handle collisions between thrown pots and other objects in the current room
-      if (this.#objectsByRoomId[roomId].pots.length > 0) {
-        this.physics.add.collider(this.#objectsByRoomId[roomId].pots, this.#blockingGroup, (pot) => {
-          if (!(pot instanceof Pot)) {
+            // handle boss door
+            if (areaInventory.bossKey) {
+              // update data manager so we can persist door state
+              DataManager.instance.updateDoorData(this.#currentRoomId, door.id, true);
+              door.open();
+            }
+          }
+        }
+      });
+
+      // collisions between enemy groups, collision layers, player, player weapon, and blocking items (pots, chests, etc)
+      // Add proper null check for this.#objectsByRoomId
+      if (this.#objectsByRoomId && typeof this.#objectsByRoomId === 'object') {
+        Object.keys(this.#objectsByRoomId).forEach((key) => {
+          const roomId = parseInt(key, 10);
+          // Add additional null check for the room data
+          if (this.#objectsByRoomId[roomId] === undefined) {
             return;
           }
-          pot.break();
-        });
-        // collisions between pots and collision layer
-        this.physics.add.collider(this.#objectsByRoomId[roomId].pots, this.#collisionLayer, (pot) => {
-          if (!(pot instanceof Pot)) {
-            return;
+
+          if (this.#objectsByRoomId[roomId].enemyGroup !== undefined) {
+            // collide with walls, doors, etc (only if enemy collision layer exists)
+            if (this.#enemyCollisionLayer) {
+              this.physics.add.collider(this.#objectsByRoomId[roomId].enemyGroup, this.#enemyCollisionLayer);
+            }
+
+            // register collisions between player and enemies
+            this.physics.add.overlap(this.#player, this.#objectsByRoomId[roomId].enemyGroup, () => {
+              this.#player.hit(DIRECTION.DOWN, 1);
+            });
+
+            // register collisions between enemies and blocking game objects (doors, pots, chests, etc.)
+            this.physics.add.collider(
+              this.#objectsByRoomId[roomId].enemyGroup,
+              this.#blockingGroup,
+              (enemy, gameObject) => {
+                // handle when pot objects are thrown at enemies
+                if (
+                  gameObject instanceof Pot &&
+                  isArcadePhysicsBody(gameObject.body) &&
+                  (gameObject.body.velocity.x !== 0 || gameObject.body.velocity.y !== 0)
+                ) {
+                  const enemyGameObject = enemy as CharacterGameObject;
+                  if (enemyGameObject instanceof CharacterGameObject) {
+                    enemyGameObject.hit(this.#player.direction, 1);
+                    gameObject.break();
+                  }
+                }
+              },
+              // handle when objects are thrown on wisps, ignore collisions and let object move through
+              (enemy, gameObject) => {
+                const body = (gameObject as unknown as GameObject).body;
+                if (
+                  enemy instanceof Wisp &&
+                  isArcadePhysicsBody(body) &&
+                  (body.velocity.x !== 0 || body.velocity.y !== 0)
+                ) {
+                  return false;
+                }
+                return true;
+              },
+            );
+
+            // register collisions between player weapon and enemies
+            this.physics.add.overlap(
+              this.#objectsByRoomId[roomId].enemyGroup,
+              this.#player.weaponComponent.body,
+              (enemy) => {
+                (enemy as CharacterGameObject).hit(this.#player.direction, this.#player.weaponComponent.weaponDamage);
+              },
+            );
+
+            // register collisions between enemy weapon and player
+            const enemyWeapons = this.#objectsByRoomId[roomId].enemyGroup.getChildren().flatMap((enemy) => {
+              const weaponComponent = WeaponComponent.getComponent<WeaponComponent>(enemy as GameObject);
+              if (weaponComponent !== undefined) {
+                return [weaponComponent.body];
+              }
+              return [];
+            });
+            if (enemyWeapons.length > 0) {
+              this.physics.add.overlap(enemyWeapons, this.#player, (enemyWeaponBody) => {
+                // get associated weapon component so we can do things like hide projectiles and disable collisions
+                const weaponComponent = WeaponComponent.getComponent<WeaponComponent>(enemyWeaponBody as GameObject);
+                if (weaponComponent === undefined || weaponComponent.weapon === undefined) {
+                  return;
+                }
+                weaponComponent.weapon.onCollisionCallback();
+                this.#player.hit(DIRECTION.DOWN, weaponComponent.weaponDamage);
+              });
+            }
           }
-          pot.break();
+
+          // handle collisions between thrown pots and other objects in the current room
+          // Add null check for pots array
+          if (this.#objectsByRoomId[roomId].pots && this.#objectsByRoomId[roomId].pots.length > 0) {
+            this.physics.add.collider(this.#objectsByRoomId[roomId].pots, this.#blockingGroup, (pot) => {
+              if (!(pot instanceof Pot)) {
+                return;
+              }
+              pot.break();
+            });
+            // collisions between pots and collision layer (only if collision layer exists)
+            if (this.#collisionLayer) {
+              this.physics.add.collider(this.#objectsByRoomId[roomId].pots, this.#collisionLayer, (pot) => {
+                if (!(pot instanceof Pot)) {
+                  return;
+                }
+                pot.break();
+              });
+            }
+          }
         });
       }
-    });
+    } catch (error) {
+      console.error('[GameScene] Error registering colliders:', error);
+    }
   }
 
   #registerCustomEvents(): void {
@@ -376,122 +427,265 @@ export class GameScene extends Phaser.Scene {
   };
 
   #createLevel(): void {
+    console.log('[GameScene] Creating level with data:', this.#levelData);
+    console.log('[GameScene] Background key:', ASSET_KEYS[`${this.#levelData.level}_BACKGROUND`]);
+    console.log('[GameScene] Foreground key:', ASSET_KEYS[`${this.#levelData.level}_FOREGROUND`]);
+    
+    // Add a solid colored background as fallback
+    const fallbackBg = this.add.rectangle(0, 0, 2000, 2000, 0x222222).setOrigin(0).setDepth(-10);
+    console.log('[GameScene] Fallback background created:', fallbackBg);
+    
     // create main background
-    this.add.image(0, 0, ASSET_KEYS[`${this.#levelData.level}_BACKGROUND`], 0).setOrigin(0);
+    const background = this.add.image(0, 0, ASSET_KEYS[`${this.#levelData.level}_BACKGROUND`], 0).setOrigin(0);
+    console.log('[GameScene] Background created:', background);
+    console.log('[GameScene] Background visible:', background.visible, 'Alpha:', background.alpha);
+    
     // create main foreground
-    this.add.image(0, 0, ASSET_KEYS[`${this.#levelData.level}_FOREGROUND`], 0).setOrigin(0).setDepth(2);
+    const foreground = this.add.image(0, 0, ASSET_KEYS[`${this.#levelData.level}_FOREGROUND`], 0).setOrigin(0).setDepth(2);
+    console.log('[GameScene] Foreground created:', foreground);
+    console.log('[GameScene] Foreground visible:', foreground.visible, 'Alpha:', foreground.alpha);
 
     // create tilemap from Tiled json data
-    const map = this.make.tilemap({
-      key: ASSET_KEYS[`${this.#levelData.level}_LEVEL`],
-    });
-
-    // The first parameter is the name of the tileset in Tiled and the second parameter is the key
-    // of the tileset image used when loading the file in preload.
-    const collisionTiles = map.addTilesetImage(TILED_TILESET_NAMES.COLLISION, ASSET_KEYS.COLLISION);
-    if (collisionTiles === null) {
-      console.log(`encountered error while creating collision tiles from tiled`);
+    console.log('[GameScene] Creating tilemap with key:', ASSET_KEYS[`${this.#levelData.level}_LEVEL`]);
+    let map;
+    try {
+      map = this.make.tilemap({
+        key: ASSET_KEYS[`${this.#levelData.level}_LEVEL`],
+      });
+      console.log('[GameScene] Tilemap created:', map);
+    } catch (error) {
+      console.error('[GameScene] Failed to create tilemap:', error);
+      // Create a fallback tilemap or continue without it
+      console.log('[GameScene] Continuing without tilemap due to error');
       return;
     }
 
-    const collisionLayer = map.createLayer(TILED_LAYER_NAMES.COLLISION, collisionTiles, 0, 0);
-    if (collisionLayer === null) {
-      console.log(`encountered error while creating collision layer using data from tiled`);
+    try {
+      // The first parameter is the name of the tileset in Tiled and the second parameter is the key
+      // of the tileset image used when loading the file in preload.
+      const collisionTiles = map.addTilesetImage(TILED_TILESET_NAMES.COLLISION, ASSET_KEYS.COLLISION);
+      if (collisionTiles === null) {
+        console.log(`[GameScene] encountered error while creating collision tiles from tiled`);
+        return;
+      }
+
+      const collisionLayer = map.createLayer(TILED_LAYER_NAMES.COLLISION, collisionTiles, 0, 0);
+      if (collisionLayer === null) {
+        console.log(`[GameScene] encountered error while creating collision layer using data from tiled`);
+        return;
+      }
+      this.#collisionLayer = collisionLayer;
+      this.#collisionLayer.setDepth(2).setAlpha(CONFIG.DEBUG_COLLISION_ALPHA);
+
+      const enemyCollisionLayer = map.createLayer(TILED_LAYER_NAMES.ENEMY_COLLISION, collisionTiles, 0, 0);
+      if (enemyCollisionLayer === null) {
+        console.log(`[GameScene] encountered error while creating enemy collision layer using data from tiled`);
+        return;
+      }
+      this.#enemyCollisionLayer = enemyCollisionLayer;
+      this.#enemyCollisionLayer.setDepth(2).setVisible(false);
+    } catch (error) {
+      console.error('[GameScene] Error setting up tilemap layers:', error);
+      console.log('[GameScene] Continuing without tilemap layers');
       return;
     }
-    this.#collisionLayer = collisionLayer;
-    this.#collisionLayer.setDepth(2).setAlpha(CONFIG.DEBUG_COLLISION_ALPHA);
 
-    const enemyCollisionLayer = map.createLayer(TILED_LAYER_NAMES.ENEMY_COLLISION, collisionTiles, 0, 0);
-    if (enemyCollisionLayer === null) {
-      console.log(`encountered error while creating enemy collision layer using data from tiled`);
+    try {
+      // initialize objects
+      this.#objectsByRoomId = {};
+      this.#doorTransitionGroup = this.add.group([]);
+      this.#blockingGroup = this.add.group([]);
+      this.#lockedDoorGroup = this.add.group([]);
+      this.#switchGroup = this.add.group([]);
+
+      // create game objects
+      this.#createRooms(map, TILED_LAYER_NAMES.ROOMS);
+
+      const rooms = getAllLayerNamesWithPrefix(map, TILED_LAYER_NAMES.ROOMS).map((layerName: string) => {
+        return {
+          name: layerName,
+          roomId: parseInt(layerName.split('/')[1], 10),
+        };
+      });
+      const switchLayerNames = rooms.filter((layer) => layer.name.endsWith(`/${TILED_LAYER_NAMES.SWITCHES}`));
+      const potLayerNames = rooms.filter((layer) => layer.name.endsWith(`/${TILED_LAYER_NAMES.POTS}`));
+      const doorLayerNames = rooms.filter((layer) => layer.name.endsWith(`/${TILED_LAYER_NAMES.DOORS}`));
+      const chestLayerNames = rooms.filter((layer) => layer.name.endsWith(`/${TILED_LAYER_NAMES.CHESTS}`));
+      const enemyLayerNames = rooms.filter((layer) => layer.name.endsWith(`/${TILED_LAYER_NAMES.ENEMIES}`));
+
+      doorLayerNames.forEach((layer) => this.#createDoors(map, layer.name, layer.roomId));
+      switchLayerNames.forEach((layer) => this.#createButtons(map, layer.name, layer.roomId));
+      potLayerNames.forEach((layer) => this.#createPots(map, layer.name, layer.roomId));
+      chestLayerNames.forEach((layer) => this.#createChests(map, layer.name, layer.roomId));
+      enemyLayerNames.forEach((layer) => this.#createEnemies(map, layer.name, layer.roomId));
+    } catch (error) {
+      console.error('[GameScene] Error creating game objects:', error);
+      console.log('[GameScene] Continuing without game objects');
       return;
     }
-    this.#enemyCollisionLayer = enemyCollisionLayer;
-    this.#enemyCollisionLayer.setDepth(2).setVisible(false);
-
-    // initialize objects
-    this.#objectsByRoomId = {};
-    this.#doorTransitionGroup = this.add.group([]);
-    this.#blockingGroup = this.add.group([]);
-    this.#lockedDoorGroup = this.add.group([]);
-    this.#switchGroup = this.add.group([]);
-
-    // create game objects
-    this.#createRooms(map, TILED_LAYER_NAMES.ROOMS);
-
-    const rooms = getAllLayerNamesWithPrefix(map, TILED_LAYER_NAMES.ROOMS).map((layerName: string) => {
-      return {
-        name: layerName,
-        roomId: parseInt(layerName.split('/')[1], 10),
-      };
-    });
-    const switchLayerNames = rooms.filter((layer) => layer.name.endsWith(`/${TILED_LAYER_NAMES.SWITCHES}`));
-    const potLayerNames = rooms.filter((layer) => layer.name.endsWith(`/${TILED_LAYER_NAMES.POTS}`));
-    const doorLayerNames = rooms.filter((layer) => layer.name.endsWith(`/${TILED_LAYER_NAMES.DOORS}`));
-    const chestLayerNames = rooms.filter((layer) => layer.name.endsWith(`/${TILED_LAYER_NAMES.CHESTS}`));
-    const enemyLayerNames = rooms.filter((layer) => layer.name.endsWith(`/${TILED_LAYER_NAMES.ENEMIES}`));
-
-    doorLayerNames.forEach((layer) => this.#createDoors(map, layer.name, layer.roomId));
-    switchLayerNames.forEach((layer) => this.#createButtons(map, layer.name, layer.roomId));
-    potLayerNames.forEach((layer) => this.#createPots(map, layer.name, layer.roomId));
-    chestLayerNames.forEach((layer) => this.#createChests(map, layer.name, layer.roomId));
-    enemyLayerNames.forEach((layer) => this.#createEnemies(map, layer.name, layer.roomId));
   }
 
   #setupCamera(): void {
-    const roomSize = this.#objectsByRoomId[this.#levelData.roomId].room;
-    this.cameras.main.setBounds(roomSize.x, roomSize.y - roomSize.height, roomSize.width, roomSize.height);
-    const canvasW = this.scale.width;
-    const canvasH = this.scale.height;
-    const zoomX = canvasW / roomSize.width;
-    const zoomY = canvasH / roomSize.height;
-    const zoom = Math.min(zoomX, zoomY);
-    this.cameras.main.setZoom(zoom);
-    this.cameras.main.startFollow(this.#player);
+    try {
+      console.log('[GameScene] Setting up camera...');
+      
+      // Check if objectsByRoomId and room exist before accessing
+      if (!this.#objectsByRoomId || !this.#objectsByRoomId[this.#levelData.roomId] || 
+          !this.#objectsByRoomId[this.#levelData.roomId].room) {
+        console.warn('[GameScene] Room data not available for camera setup');
+        // Set default camera settings
+        this.cameras.main.setZoom(1);
+        if (this.#player) {
+          this.cameras.main.startFollow(this.#player);
+        }
+        this.cameras.main.setBackgroundColor('#000000');
+        return;
+      }
+      
+      const roomSize = this.#objectsByRoomId[this.#levelData.roomId].room;
+      console.log('[GameScene] Setting up camera with room size:', roomSize);
+      
+      // Set camera bounds with proper offset for the room
+      this.cameras.main.setBounds(
+        roomSize.x,
+        roomSize.y - roomSize.height,
+        roomSize.width,
+        roomSize.height
+      );
+      
+      // Calculate zoom to fit room with a small margin
+      const canvasW = this.scale.width;
+      const canvasH = this.scale.height;
+      const zoomX = (canvasW * 0.95) / roomSize.width;
+      const zoomY = (canvasH * 0.95) / roomSize.height;
+      const zoom = Math.min(zoomX, zoomY);
+      
+      console.log('[GameScene] Calculated zoom:', zoom);
+      
+      this.cameras.main.setZoom(zoom);
+      this.cameras.main.startFollow(this.#player);
+    } catch (error) {
+      console.error('[GameScene] Error setting up camera:', error);
+      // Set default camera settings
+      this.cameras.main.setZoom(1);
+      if (this.#player) {
+        this.cameras.main.startFollow(this.#player);
+      }
+    }
+    
+    // Ensure background covers the entire camera view
+    this.cameras.main.setBackgroundColor('#000000');
+    
+    // Also set a global background as fallback
+    if (this.game && this.game.canvas) {
+      this.game.canvas.style.backgroundColor = '#000000';
+    }
   }
 
   #onResize(): void {
-    const roomSize = this.#objectsByRoomId[this.#currentRoomId].room;
-    const canvasW = this.scale.width;
-    const canvasH = this.scale.height;
-    const zoomX = canvasW / roomSize.width;
-    const zoomY = canvasH / roomSize.height;
-    const zoom = Math.min(zoomX, zoomY);
-    this.cameras.main.setZoom(zoom);
-    this.cameras.main.setBounds(roomSize.x, roomSize.y - roomSize.height, roomSize.width, roomSize.height);
+    try {
+      // Check if objectsByRoomId and room exist before accessing
+      if (!this.#objectsByRoomId || !this.#objectsByRoomId[this.#currentRoomId] || 
+          !this.#objectsByRoomId[this.#currentRoomId].room) {
+        console.warn('[GameScene] Room data not available for resize');
+        return;
+      }
+      
+      const roomSize = this.#objectsByRoomId[this.#currentRoomId].room;
+      const canvasW = this.scale.width;
+      const canvasH = this.scale.height;
+      const zoomX = (canvasW * 0.95) / roomSize.width;
+      const zoomY = (canvasH * 0.95) / roomSize.height;
+      const zoom = Math.min(zoomX, zoomY);
+      this.cameras.main.setZoom(zoom);
+      this.cameras.main.setBounds(roomSize.x, roomSize.y - roomSize.height, roomSize.width, roomSize.height);
+    } catch (error) {
+      console.error('[GameScene] Error handling resize:', error);
+    }
   }
 
   #setupPlayer(): void {
-    const startingDoor = this.#objectsByRoomId[this.#levelData.roomId].doorMap[this.#levelData.doorId];
-    const playerStartPosition = {
-      x: startingDoor.x + startingDoor.doorTransitionZone.width / 2,
-      y: startingDoor.y - startingDoor.doorTransitionZone.height / 2,
-    };
-    switch (startingDoor.direction) {
-      case DIRECTION.UP:
-        playerStartPosition.y += 40;
-        break;
-      case DIRECTION.DOWN:
-        playerStartPosition.y -= 40;
-        break;
-      case DIRECTION.LEFT:
-        playerStartPosition.x += 40;
-        break;
-      case DIRECTION.RIGHT:
-        playerStartPosition.x -= 40;
-        break;
-      default:
-        exhaustiveGuard(startingDoor.direction);
-    }
+    console.log('[GameScene] Setting up player...');
+    
+    try {
+      // Check if objectsByRoomId and doorMap exist before accessing
+      if (!this.#objectsByRoomId || !this.#objectsByRoomId[this.#levelData.roomId] || 
+          !this.#objectsByRoomId[this.#levelData.roomId].doorMap) {
+        console.warn('[GameScene] Room data or door map not available, creating player at default position');
+        this.#player = new Player({
+          scene: this,
+          position: { x: 400, y: 300 },
+          controls: this.#controls,
+          maxLife: CONFIG.PLAYER_START_MAX_HEALTH,
+          currentLife: CONFIG.PLAYER_START_MAX_HEALTH,
+        });
+        console.log('[GameScene] Player created at default position:', this.#player);
+        return;
+      }
+      
+      const startingDoor = this.#objectsByRoomId[this.#levelData.roomId].doorMap[this.#levelData.doorId];
+      if (!startingDoor) {
+        console.warn('[GameScene] Starting door not found, creating player at default position');
+        this.#player = new Player({
+          scene: this,
+          position: { x: 400, y: 300 },
+          controls: this.#controls,
+          maxLife: CONFIG.PLAYER_START_MAX_HEALTH,
+          currentLife: CONFIG.PLAYER_START_MAX_HEALTH,
+        });
+        console.log('[GameScene] Player created at default position:', this.#player);
+        return;
+      }
+      
+      console.log('[GameScene] Starting door:', startingDoor);
+      
+      const playerStartPosition = {
+        x: startingDoor.x + startingDoor.doorTransitionZone.width / 2,
+        y: startingDoor.y - startingDoor.doorTransitionZone.height / 2,
+      };
+      
+      console.log('[GameScene] Initial player position:', playerStartPosition);
+      
+      switch (startingDoor.direction) {
+        case DIRECTION.UP:
+          playerStartPosition.y += 40;
+          break;
+        case DIRECTION.DOWN:
+          playerStartPosition.y -= 40;
+          break;
+        case DIRECTION.LEFT:
+          playerStartPosition.x += 40;
+          break;
+        case DIRECTION.RIGHT:
+          playerStartPosition.x -= 40;
+          break;
+        default:
+          exhaustiveGuard(startingDoor.direction);
+      }
+      
+      console.log('[GameScene] Adjusted player position:', playerStartPosition);
 
-    this.#player = new Player({
-      scene: this,
-      position: { x: playerStartPosition.x, y: playerStartPosition.y },
-      controls: this.#controls,
-      maxLife: CONFIG.PLAYER_START_MAX_HEALTH,
-      currentLife: CONFIG.PLAYER_START_MAX_HEALTH,
-    });
+      this.#player = new Player({
+        scene: this,
+        position: { x: playerStartPosition.x, y: playerStartPosition.y },
+        controls: this.#controls,
+        maxLife: CONFIG.PLAYER_START_MAX_HEALTH,
+        currentLife: CONFIG.PLAYER_START_MAX_HEALTH,
+      });
+      
+      console.log('[GameScene] Player created:', this.#player);
+    } catch (error) {
+      console.error('[GameScene] Error setting up player:', error);
+      // Create player at default position as fallback
+      this.#player = new Player({
+        scene: this,
+        position: { x: 400, y: 300 },
+        controls: this.#controls,
+        maxLife: CONFIG.PLAYER_START_MAX_HEALTH,
+        currentLife: CONFIG.PLAYER_START_MAX_HEALTH,
+      });
+      console.log('[GameScene] Player created at default position due to error:', this.#player);
+    }
   }
 
   /**
@@ -830,28 +1024,138 @@ export class GameScene extends Phaser.Scene {
   }
 
   #showObjectsInRoomById(roomId: number): void {
-    this.#objectsByRoomId[roomId].doors.forEach((door) => door.enableObject());
-    this.#objectsByRoomId[roomId].switches.forEach((button) => button.enableObject());
-    this.#objectsByRoomId[roomId].pots.forEach((pot) => pot.resetPosition());
-    this.#objectsByRoomId[roomId].chests.forEach((chest) => chest.enableObject());
-    if (this.#objectsByRoomId[roomId].enemyGroup === undefined) {
-      return;
-    }
-    for (const child of this.#objectsByRoomId[roomId].enemyGroup.getChildren()) {
-      (child as CharacterGameObject).enableObject();
+    try {
+      console.log('[GameScene] Enabling objects in room:', roomId);
+      console.log('[GameScene] Room data:', this.#objectsByRoomId[roomId]);
+      
+      // Add comprehensive null checks before accessing room data
+      if (!this.#objectsByRoomId || typeof this.#objectsByRoomId !== 'object') {
+        console.warn('[GameScene] objectsByRoomId is not properly initialized');
+        return;
+      }
+      
+      if (!this.#objectsByRoomId[roomId]) {
+        console.warn('[GameScene] Room data not found for room:', roomId);
+        return;
+      }
+      
+      // Check each object type before trying to access it
+      if (this.#objectsByRoomId[roomId].doors && Array.isArray(this.#objectsByRoomId[roomId].doors)) {
+        console.log('[GameScene] Enabling doors:', this.#objectsByRoomId[roomId].doors.length);
+        this.#objectsByRoomId[roomId].doors.forEach((door) => {
+          if (door && typeof door.enableObject === 'function') {
+            door.enableObject();
+          }
+        });
+      } else {
+        console.log('[GameScene] No doors to enable for room:', roomId);
+      }
+      
+      if (this.#objectsByRoomId[roomId].switches && Array.isArray(this.#objectsByRoomId[roomId].switches)) {
+        console.log('[GameScene] Enabling switches:', this.#objectsByRoomId[roomId].switches.length);
+        this.#objectsByRoomId[roomId].switches.forEach((button) => {
+          if (button && typeof button.enableObject === 'function') {
+            button.enableObject();
+          }
+        });
+      } else {
+        console.log('[GameScene] No switches to enable for room:', roomId);
+      }
+      
+      if (this.#objectsByRoomId[roomId].pots && Array.isArray(this.#objectsByRoomId[roomId].pots)) {
+        console.log('[GameScene] Resetting pots:', this.#objectsByRoomId[roomId].pots.length);
+        this.#objectsByRoomId[roomId].pots.forEach((pot) => {
+          if (pot && typeof pot.resetPosition === 'function') {
+            pot.resetPosition();
+          }
+        });
+      } else {
+        console.log('[GameScene] No pots to reset for room:', roomId);
+      }
+      
+      if (this.#objectsByRoomId[roomId].chests && Array.isArray(this.#objectsByRoomId[roomId].chests)) {
+        console.log('[GameScene] Enabling chests:', this.#objectsByRoomId[roomId].chests.length);
+        this.#objectsByRoomId[roomId].chests.forEach((chest) => {
+          if (chest && typeof chest.enableObject === 'function') {
+            chest.enableObject();
+          }
+        });
+      } else {
+        console.log('[GameScene] No chests to enable for room:', roomId);
+      }
+      
+      // Check enemy group separately
+      if (this.#objectsByRoomId[roomId].enemyGroup === undefined) {
+        console.log('[GameScene] No enemy group found for room:', roomId);
+        return;
+      }
+      
+      console.log('[GameScene] Enabling enemies');
+      const enemies = this.#objectsByRoomId[roomId].enemyGroup.getChildren();
+      if (Array.isArray(enemies)) {
+        for (const child of enemies) {
+          if (child && typeof (child as CharacterGameObject).enableObject === 'function') {
+            (child as CharacterGameObject).enableObject();
+          }
+        }
+      }
+      
+      console.log('[GameScene] Finished enabling objects in room:', roomId);
+    } catch (error) {
+      console.error('[GameScene] Error enabling objects in room:', roomId, error);
     }
   }
 
   #hideObjectsInRoomById(roomId: number): void {
-    this.#objectsByRoomId[roomId].doors.forEach((door) => door.disableObject());
-    this.#objectsByRoomId[roomId].switches.forEach((button) => button.disableObject());
-    this.#objectsByRoomId[roomId].pots.forEach((pot) => pot.disableObject());
-    this.#objectsByRoomId[roomId].chests.forEach((chest) => chest.disableObject());
-    if (this.#objectsByRoomId[roomId].enemyGroup === undefined) {
+    // Add null checks before accessing room data
+    if (!this.#objectsByRoomId || !this.#objectsByRoomId[roomId]) {
+      console.warn('[GameScene] Cannot hide objects, room data not found for room:', roomId);
       return;
     }
-    for (const child of this.#objectsByRoomId[roomId].enemyGroup.getChildren()) {
-      (child as CharacterGameObject).disableObject();
+    
+    // Check each object type before trying to access it
+    if (this.#objectsByRoomId[roomId].doors && Array.isArray(this.#objectsByRoomId[roomId].doors)) {
+      this.#objectsByRoomId[roomId].doors.forEach((door) => {
+        if (door && typeof door.disableObject === 'function') {
+          door.disableObject();
+        }
+      });
+    }
+    
+    if (this.#objectsByRoomId[roomId].switches && Array.isArray(this.#objectsByRoomId[roomId].switches)) {
+      this.#objectsByRoomId[roomId].switches.forEach((button) => {
+        if (button && typeof button.disableObject === 'function') {
+          button.disableObject();
+        }
+      });
+    }
+    
+    if (this.#objectsByRoomId[roomId].pots && Array.isArray(this.#objectsByRoomId[roomId].pots)) {
+      this.#objectsByRoomId[roomId].pots.forEach((pot) => {
+        if (pot && typeof pot.disableObject === 'function') {
+          pot.disableObject();
+        }
+      });
+    }
+    
+    if (this.#objectsByRoomId[roomId].chests && Array.isArray(this.#objectsByRoomId[roomId].chests)) {
+      this.#objectsByRoomId[roomId].chests.forEach((chest) => {
+        if (chest && typeof chest.disableObject === 'function') {
+          chest.disableObject();
+        }
+      });
+    }
+    
+    // Check enemy group separately
+    if (this.#objectsByRoomId[roomId].enemyGroup !== undefined) {
+      const enemies = this.#objectsByRoomId[roomId].enemyGroup.getChildren();
+      if (Array.isArray(enemies)) {
+        for (const child of enemies) {
+          if (child && typeof (child as CharacterGameObject).disableObject === 'function') {
+            (child as CharacterGameObject).disableObject();
+          }
+        }
+      }
     }
   }
 

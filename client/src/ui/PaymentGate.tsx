@@ -17,6 +17,13 @@ export default function PaymentGate() {
 
   const master = import.meta.env?.VITE_MASTER_WALLET_ADDRESS as string | undefined
 
+  // Resume game on component mount to ensure it's not paused
+  useEffect(() => {
+    const game = (window as any).__phaserGame as Phaser.Game | undefined
+    const scene = game?.scene?.getScene(SCENE_KEYS.GAME_SCENE as any)
+    scene?.scene.resume()
+  }, [])
+
   const pauseGame = useMemo(() => {
     return () => {
       const game = (window as any).__phaserGame as Phaser.Game | undefined
@@ -36,8 +43,12 @@ export default function PaymentGate() {
   useEffect(() => {
     // Verbose logs to help diagnose why the gate may not be visible
     console.debug('[PaymentGate] connected=', connected, 'master=', master)
-    if (connected) {
-      // Show even if master is missing, but surface an inline config error
+    
+    // Only show payment gate if:
+    // 1. Wallet is connected
+    // 2. Master wallet address is configured
+    // 3. Transaction hasn't been completed yet
+    if (connected && master && !txHash) {
       setShow(true)
       pauseGame()
     } else {
@@ -45,7 +56,7 @@ export default function PaymentGate() {
       resumeGame()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, master])
+  }, [connected, master, txHash])
 
   useEffect(() => {
     // Check transaction status periodically
@@ -83,8 +94,8 @@ export default function PaymentGate() {
     setIsProcessing(true)
     
     try {
-      // Amount: 0.1 APT (in octas - smallest unit)
-      const amount = 10000000 // 0.1 APT in octas (1 APT = 100,000,000 octas)
+      // Amount: 0.0001 APT (in octas - smallest unit) for testing
+      const amount = 10000 // 0.0001 APT in octas (1 APT = 100,000,000 octas)
       
       const response = await signAndSubmitTransaction({
         sender: account.address.toString(),
@@ -95,6 +106,12 @@ export default function PaymentGate() {
         },
       })
       setTxHash(response.hash)
+      
+      // Resume game after successful transaction
+      setTimeout(() => {
+        setShow(false)
+        resumeGame()
+      }, 1000)
     } catch (e: any) {
       console.error('Payment failed:', e)
       setError(e?.message || 'Payment failed')
@@ -166,7 +183,7 @@ export default function PaymentGate() {
           </div>
 
           <div style={{ fontFamily: 'Press Start 2P, monospace', fontSize: 11, opacity: 0.9, lineHeight: 1.7, marginBottom: 16 }}>
-            Send <strong>0.1 APT</strong> to unlock the game.
+            Send <strong>0.0001 APT</strong> to unlock the game.
           </div>
 
           <div style={{ fontFamily: 'monospace', fontSize: 11, opacity: 0.8, marginBottom: 18 }}>
@@ -189,7 +206,7 @@ export default function PaymentGate() {
                 opacity: isProcessing ? 0.7 : 1,
               }}
             >
-              {isProcessing ? 'Confirm in wallet...' : 'Pay 0.1 APT'}
+              {isProcessing ? 'Confirm in wallet...' : 'Pay 0.0001 APT'}
             </button>
 
             {txHash && (

@@ -5,26 +5,24 @@ import {UiScene} from "./scenes/ui-scene";
 import {GameOverScene} from "./scenes/game-over-scene";
 
 const config: Types.Core.GameConfig = {
-    type: WEBGL,
-    pixelArt: true,
-    roundPixels:true,
-    scale: {
-        parent: "game-container",
-        width: 800,
-        height: 800,
-        autoCenter: Scale.CENTER_BOTH,
-        mode: Scale.ScaleModes.HEIGHT_CONTROLS_WIDTH,
-        max: { width: 800, height: 800 },
-    },
+    type: Phaser.WEBGL,
+  pixelArt: true,
+  roundPixels: true,
+  scale: {
     parent: 'game-container',
-    backgroundColor: '#dddddd',
-    physics: {
-        default: "arcade",
-        arcade: {
-            gravity: { y: 0, x: 0 },
-            debug: false,
-        },  
+    width: 256,
+    height: 224,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    mode: Phaser.Scale.HEIGHT_CONTROLS_WIDTH,
+  },
+  backgroundColor: '#000000',
+  physics: {
+    default: 'arcade',
+    arcade: {
+      gravity: { y: 0, x: 0 },
+      debug: false,
     },
+  },
     scene: [
         PreloadScene,
         GameScene,

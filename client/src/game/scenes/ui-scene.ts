@@ -18,6 +18,7 @@ export class UiScene extends Phaser.Scene {
   }
 
   public create(): void {
+    console.log('[UiScene] Creating UI scene...');
     // create main hud
     this.#hudContainer = this.add.container(0, 0, []);
     this.#hearts = [];

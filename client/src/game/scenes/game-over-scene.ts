@@ -18,7 +18,9 @@ export class GameOverScene extends Phaser.Scene {
   }
 
   public create(): void {
+    console.log('[GameOverScene] Creating Game Over scene...');
     if (!this.input.keyboard) {
+      console.log('[GameOverScene] Keyboard input not available');
       return;
     }
 
@@ -35,6 +37,8 @@ export class GameOverScene extends Phaser.Scene {
     this.#controls = new KeyboardComponent(this.input.keyboard);
     this.#selectedMenuOptionIndex = 0;
     DataManager.instance.resetPlayerHealthToMin();
+    
+    console.log('[GameOverScene] Game Over scene created');
   }
 
   public update(): void {

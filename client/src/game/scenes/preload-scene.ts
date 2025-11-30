@@ -13,7 +13,17 @@ export class PreloadScene extends Scene {
     };
 
     public preload(): void {
+        console.log('Preloading assets...');
         this.load.pack(ASSET_PACK_KEYS.MAIN, "assets/data/assets.json");
+        
+        // Add progress tracking
+        this.load.on('progress', (value: number) => {
+            console.log(`Loading progress: ${(value * 100).toFixed(2)}%`);
+        });
+        
+        this.load.on('complete', () => {
+            console.log('Asset loading complete');
+        });
     }
 
     public create(): void {
@@ -23,6 +33,7 @@ export class PreloadScene extends Scene {
             roomId:DataManager.instance.data.currentArea.startRoomId,
             doorId:DataManager.instance.data.currentArea.startDoorId,
         };
+        console.log('Starting GameScene with data:', sceneData);
         this.scene.start(SCENE_KEYS.GAME_SCENE, sceneData)
     }
 
